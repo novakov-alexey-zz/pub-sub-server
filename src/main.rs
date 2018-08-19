@@ -12,7 +12,8 @@ fn main() {
         .mount(
             "/info",
             routes![
-                index
+                index,
+                subscribe
             ],
         ).launch();
 }
