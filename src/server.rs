@@ -1,3 +1,9 @@
+extern crate rocket;
+
+//TODO: extract entire usage of Rocket from here to client.rs module
+use rocket::http::Header;
+use rocket::http::Status;
+use rocket::local::Client;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -15,10 +21,6 @@ impl Subscriber {
     pub fn new(callback: String, topic: String) -> Self {
         Subscriber { id: Uuid::new_v4(), callback, topic }
     }
-
-    pub fn receive(&self, m: &Message) {
-        //TODO:
-    }
 }
 
 #[derive(Debug)]
@@ -34,15 +36,17 @@ type Subject = String;
 type Topic = String;
 
 pub struct PubSubServer {
+    client: Client,
     pending_subscribers: Arc<Mutex<HashMap<Uuid, Subscriber>>>,
-    subscribers: Arc<Mutex<HashMap<String, Vec<Subscriber>>>>,
-    received_subs: Arc<Mutex<HashSet<String>>>,
+    subscribers: Arc<Mutex<HashMap<Topic, Vec<Subscriber>>>>,
+    received_subs: Arc<Mutex<HashSet<Topic>>>,
     topics: Arc<Mutex<HashMap<Topic, HashMap<Uuid, HashMap<Subject, Message>>>>>,
 }
 
 impl PubSubServer {
     pub fn new() -> Self {
         PubSubServer {
+            client: Client::new(rocket::ignite()).expect("valid rocket"),
             pending_subscribers: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             received_subs: Arc::new(Mutex::new(HashSet::new())),
@@ -91,6 +95,27 @@ impl PubSubServer {
             .into_iter()
             .flat_map(|m| m.values())
             .into_iter()
-            .for_each(|m| s.receive(m))
+            .for_each(|m| self.publish(&m, &s))
+    }
+
+    //Subscriber.receive
+    fn publish(&self, m: &Message, sub: &Subscriber) {
+        println!("publish message: {:?} for subscriber: {:?}", &m, &sub);
+
+        let mut req = self.client.post(format!("{}receive/{}/{}/{}", &sub.callback, &sub.topic,
+                                               &m.publisher, &m.subject));
+        &m.headers.iter().for_each(|(k, v)|
+            req.add_header(Header::new(format!("info-{}", k.to_owned()), v.to_owned()))
+        );
+
+        let res = req.body(&m.body).dispatch();
+        match res.status() {
+            Status::Ok =>
+                println!("message publishing for {:?} returned Ok", &sub),
+            s => {
+                self.remove_subscriber(sub.id);
+                println!("message publishing failed for {:?} with status: {}", &sub, s);
+            }
+        }
     }
 }

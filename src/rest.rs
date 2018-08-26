@@ -53,5 +53,7 @@ fn unsubscribe(server: State<PubSubServer>, id: String) -> Result<String, ParseE
 fn touch_subscriber(server: State<PubSubServer>, id: String) -> Result<(), ParseError> {
     let uuid = Uuid::parse_str(id.as_str())?;
     server.touch_subscriber(uuid);
-    Ok(())
+    Ok(()) //TODO: return real result, because touch may fail to publish all messages to this
+    // subscriber, so that in case non-Ok reponse here, subscriber can do retry logic and repeat
+    // this request later
 }
