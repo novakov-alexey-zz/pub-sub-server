@@ -1,8 +1,11 @@
 extern crate rocket;
 
 use rocket::http::HeaderMap;
+use rocket::http::Status;
 use rocket::Outcome;
 use rocket::request::{self, FromRequest, Request};
+use rocket::response::status::Custom;
+use rocket::response::status::NotFound;
 use self::rocket::State;
 use std::iter::Map;
 use super::server::PubSubServer;
@@ -33,9 +36,13 @@ fn index() -> &'static str {
 }
 
 #[get("/subscribe/<topic>")]
-fn subscribe<'r>(server: State<PubSubServer>, topic: String, headers: Headers) -> Result<String, &'static str> {
+fn subscribe<'r>(server: State<PubSubServer>, topic: String, headers: Headers)
+                 -> Result<String, NotFound<&'static str>> {
     let l = headers.v.get("Location").next()
-        .ok_or("HTTP request must have 'Location' header containing Uuid of a subscriber")?;
+        .ok_or(
+            NotFound("HTTP request must have 'Location' header containing Uuid of a subscriber")
+        )?;
+
     println!("subscribing on topic {} location: {}", topic, l);
     let id = server.add_pending_subscriber(l.to_string(), topic);
     Ok(format!("{}", id))
@@ -53,7 +60,5 @@ fn unsubscribe(server: State<PubSubServer>, id: String) -> Result<String, ParseE
 fn touch_subscriber(server: State<PubSubServer>, id: String) -> Result<(), ParseError> {
     let uuid = Uuid::parse_str(id.as_str())?;
     server.touch_subscriber(uuid);
-    Ok(()) //TODO: return real result, because touch may fail to publish all messages to this
-    // subscriber, so that in case non-Ok reponse here, subscriber can do retry logic and repeat
-    // this request later
+    Ok(())
 }
