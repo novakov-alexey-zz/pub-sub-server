@@ -1,10 +1,8 @@
 extern crate rocket;
 
 use rocket::http::HeaderMap;
-use rocket::http::Status;
 use rocket::Outcome;
 use rocket::request::{self, FromRequest, Request};
-use rocket::response::status::Custom;
 use rocket::response::status::NotFound;
 use self::rocket::State;
 use std::iter::Map;

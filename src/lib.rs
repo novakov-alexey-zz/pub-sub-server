@@ -17,7 +17,9 @@ pub fn mount_routes(server: PubSubServer) -> Rocket {
             "/info",
             routes![
                 index,
-                subscribe
+                subscribe,
+                unsubscribe,
+                touch_subscriber
             ],
         )
 }
