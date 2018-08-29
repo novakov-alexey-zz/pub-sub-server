@@ -9,6 +9,7 @@ use self::rest::*;
 
 pub mod rest;
 pub mod server;
+pub mod client;
 
 pub fn mount_routes(server: PubSubServer) -> Rocket {
     rocket::ignite()
