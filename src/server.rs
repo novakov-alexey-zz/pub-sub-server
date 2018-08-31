@@ -47,6 +47,7 @@ pub struct PubSubServer {
     publishers: Arc<Mutex<HashMap<Uuid, Publisher>>>,
     subscribers: Arc<Mutex<HashMap<Topic, Vec<Subscriber>>>>,
     received_subs: Arc<Mutex<HashSet<Topic>>>,
+    //TODO: why this set is needed at all?
     topics: Arc<Mutex<HashMap<Topic, HashMap<Uuid, HashMap<Subject, Message>>>>>,
 }
 
@@ -111,11 +112,7 @@ impl PubSubServer {
         println!("publish message: {:?} for subscriber: {:?}", &m, &sub);
 
         let url = format!("{}receive/{}/{}/{}", &sub.callback, &sub.topic, &m.publisher, &m.subject);
-        let hrs = m.headers
-            .iter()
-            .map(|(k, v)| (format!("info-{}", k.to_owned()), v.to_owned()))
-            .collect();
-
+        let hrs = Self::rename_headers(&m.headers);
         let res = self.client.post(url, hrs, &m.body);
 
         match res {
@@ -123,7 +120,7 @@ impl PubSubServer {
                 println!("message publishing for {:?} returned Ok", &sub),
             Err(s) => {
                 self.remove_subscriber(sub.id);
-                println!("message publishing failed for {:?} with status: {}", &sub, s);
+                println!("message publishing failed for {:?} with status: {:?}", &sub, s);
             }
         }
     }
@@ -148,8 +145,7 @@ impl PubSubServer {
         self.topics.lock().unwrap()
             .iter_mut()
             .for_each(|(_, pubs)| {
-                pubs.remove(id)
-                    .iter()
+                pubs.remove(id).iter()
                     .for_each(|msgs| {
                         &msgs.iter()
                             .for_each(|(_, msg)| {
@@ -162,5 +158,23 @@ impl PubSubServer {
             });
     }
 
-    fn remove_message(&self, m: &Message, subscribers: &Vec<Subscriber>) {}
+    fn remove_message(&self, m: &Message, subscribers: &Vec<Subscriber>) {
+        subscribers.iter().for_each(|s| {
+            let url = format!("{}remove/{}/{}/{}", s.callback, s.topic, m.publisher, m.subject);
+            println!("remove message for subscriber {:?} on {}", m, url);
+            let hrs = Self::rename_headers(&m.headers);
+
+            match self.client.delete(url.clone(), hrs) {
+                Ok(cs) => println!("removed result {}", cs),
+                Err(s) => println!("problem on remove url {} for {:?}", url, s)
+            }
+        });
+    }
+
+    fn rename_headers(headers: &HashMap<String, String>) -> HashMap<String, String> {
+        headers
+            .iter()
+            .map(|(k, v)| (format!("info-{}", k.to_owned()), v.to_owned()))
+            .collect()
+    }
 }
