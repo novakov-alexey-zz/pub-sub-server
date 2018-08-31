@@ -23,12 +23,6 @@ struct Publisher {
     id: Uuid
 }
 
-impl Publisher {
-    pub fn new(id: Uuid) -> Self {
-        Publisher { id }
-    }
-}
-
 #[derive(Debug)]
 struct Message {
     publisher: Uuid,
@@ -47,7 +41,7 @@ pub struct PubSubServer {
     publishers: Arc<Mutex<HashMap<Uuid, Publisher>>>,
     subscribers: Arc<Mutex<HashMap<Topic, Vec<Subscriber>>>>,
     received_subs: Arc<Mutex<HashSet<Topic>>>,
-    //TODO: why this set is needed at all?
+    //TODO: why received_subs set is needed at all?
     topics: Arc<Mutex<HashMap<Topic, HashMap<Uuid, HashMap<Subject, Message>>>>>,
 }
 
@@ -107,7 +101,6 @@ impl PubSubServer {
             .for_each(|m| self.publish(&m, &s))
     }
 
-    //Subscriber.receive
     fn publish(&self, m: &Message, sub: &Subscriber) {
         println!("publish message: {:?} for subscriber: {:?}", &m, &sub);
 
@@ -126,7 +119,7 @@ impl PubSubServer {
     }
 
     pub fn add_publisher(&self, id: Uuid) {
-        self.publishers.lock().unwrap().insert(id, Publisher::new(id));
+        self.publishers.lock().unwrap().insert(id, Publisher { id });
         println!("added publisher {:?}", self.publishers.lock().unwrap().get(&id));
     }
 
