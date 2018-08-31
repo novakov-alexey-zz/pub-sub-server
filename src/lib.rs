@@ -20,7 +20,8 @@ pub fn mount_routes(server: PubSubServer) -> Rocket {
                 index,
                 subscribe,
                 unsubscribe,
-                touch_subscriber
+                touch_subscriber,
+                add_publisher
             ],
         )
 }

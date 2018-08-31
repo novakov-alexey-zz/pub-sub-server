@@ -60,3 +60,18 @@ fn touch_subscriber(server: State<PubSubServer>, id: String) -> Result<(), Parse
     server.touch_subscriber(uuid);
     Ok(())
 }
+
+#[get("/publish/<id>")]
+fn add_publisher(server: State<PubSubServer>, id: String) -> Result<String, ParseError> {
+    let uuid = Uuid::parse_str(id.as_str())?;
+    println!("adding publisher {}", uuid);
+    server.add_publisher(uuid);
+    Ok(id)
+}
+
+#[delete("/publish/<id>")]
+fn remove_publisher(server: State<PubSubServer>, id: String) -> Result<(), ParseError> {
+    let uuid = Uuid::parse_str(id.as_str())?;
+    server.remove_publisher(uuid);
+    Ok(())
+}

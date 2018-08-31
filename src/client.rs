@@ -20,7 +20,7 @@ impl PubClient {
         let mut req = self.client.post(url);
 
         for (k, v) in headers {
-            req.add_header(Header::new(k.to_owned(), v.to_owned()));
+            req.add_header(Header::new(k, v));
         }
 
         let res = req.body(body).dispatch();

@@ -19,6 +19,17 @@ impl Subscriber {
 }
 
 #[derive(Debug)]
+struct Publisher {
+    id: Uuid
+}
+
+impl Publisher {
+    pub fn new(id: Uuid) -> Self {
+        Publisher { id }
+    }
+}
+
+#[derive(Debug)]
 struct Message {
     publisher: Uuid,
     topic: Topic,
@@ -33,6 +44,7 @@ type Topic = String;
 pub struct PubSubServer {
     client: PubClient,
     pending_subscribers: Arc<Mutex<HashMap<Uuid, Subscriber>>>,
+    publishers: Arc<Mutex<HashMap<Uuid, Publisher>>>,
     subscribers: Arc<Mutex<HashMap<Topic, Vec<Subscriber>>>>,
     received_subs: Arc<Mutex<HashSet<Topic>>>,
     topics: Arc<Mutex<HashMap<Topic, HashMap<Uuid, HashMap<Subject, Message>>>>>,
@@ -43,6 +55,7 @@ impl PubSubServer {
         PubSubServer {
             client: PubClient::new(),
             pending_subscribers: Arc::new(Mutex::new(HashMap::new())),
+            publishers: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             received_subs: Arc::new(Mutex::new(HashSet::new())),
             topics: Arc::new(Mutex::new(HashMap::new())),
@@ -114,4 +127,40 @@ impl PubSubServer {
             }
         }
     }
+
+    pub fn add_publisher(&self, id: Uuid) {
+        self.publishers.lock().unwrap().insert(id, Publisher::new(id));
+        println!("added publisher {:?}", self.publishers.lock().unwrap().get(&id));
+    }
+
+    pub fn remove_publisher(&self, id: Uuid) {
+        match self.publishers.lock().unwrap()
+            .remove(&id) {
+            Some(p) => {
+                self.remove_publisher_topics(&id);
+                println!("removed publisher {:?}", p)
+            }
+            None => println!("publisher not found. Doing nothing")
+        }
+    }
+
+    fn remove_publisher_topics(&self, id: &Uuid) {
+        self.topics.lock().unwrap()
+            .iter_mut()
+            .for_each(|(_, pubs)| {
+                pubs.remove(id)
+                    .iter()
+                    .for_each(|msgs| {
+                        &msgs.iter()
+                            .for_each(|(_, msg)| {
+                                self.subscribers.lock().unwrap()
+                                    .get(msg.topic.as_str())
+                                    .iter()
+                                    .for_each(|s| self.remove_message(&msg, s))
+                            });
+                    });
+            });
+    }
+
+    fn remove_message(&self, m: &Message, subscribers: &Vec<Subscriber>) {}
 }
