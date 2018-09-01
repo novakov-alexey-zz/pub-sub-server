@@ -75,3 +75,9 @@ fn remove_publisher(server: State<PubSubServer>, id: String) -> Result<(), Parse
     server.remove_publisher(uuid);
     Ok(())
 }
+
+#[head("/publish/<id>")]
+fn touch_publisher(server: State<PubSubServer>, id: String) -> Result<(), String>{
+    let uuid = Uuid::parse_str(id.as_str()).map_err(|e| format!("{}", e))?;
+    server.touch_publisher(uuid)
+}

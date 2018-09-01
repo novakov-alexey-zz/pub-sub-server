@@ -1,3 +1,4 @@
+use chrono::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -20,7 +21,21 @@ impl Subscriber {
 
 #[derive(Debug)]
 struct Publisher {
-    id: Uuid
+    id: Uuid,
+    last_seen: DateTime<Local>,
+}
+
+impl Publisher {
+    fn new(id: Uuid) -> Self {
+        Publisher {
+            id,
+            last_seen: Local::now(),
+        }
+    }
+
+    fn touch(&mut self) {
+        self.last_seen = Local::now()
+    }
 }
 
 #[derive(Debug)]
@@ -119,7 +134,7 @@ impl PubSubServer {
     }
 
     pub fn add_publisher(&self, id: Uuid) {
-        self.publishers.lock().unwrap().insert(id, Publisher { id });
+        self.publishers.lock().unwrap().insert(id, Publisher::new(id));
         println!("added publisher {:?}", self.publishers.lock().unwrap().get(&id));
     }
 
@@ -169,5 +184,16 @@ impl PubSubServer {
             .iter()
             .map(|(k, v)| (format!("info-{}", k.to_owned()), v.to_owned()))
             .collect()
+    }
+
+    pub fn touch_publisher(&self, id: Uuid) -> Result<(), String> {
+        match self.publishers.lock().unwrap().get_mut(&id) {
+            Some(p) => {
+                println!("touching publisher {:?}", &p);
+                p.touch();
+                Ok(())
+            }
+            None => Err(format!("Touching unkown publisher with id: {}", id))
+        }
     }
 }

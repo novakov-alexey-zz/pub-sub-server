@@ -2,10 +2,11 @@
 #![plugin(rocket_codegen)]
 extern crate rocket;
 extern crate uuid;
+extern crate chrono;
 
 use rocket::Rocket;
-use server::PubSubServer;
 use self::rest::*;
+use server::PubSubServer;
 
 pub mod rest;
 pub mod server;
@@ -21,7 +22,9 @@ pub fn mount_routes(server: PubSubServer) -> Rocket {
                 subscribe,
                 unsubscribe,
                 touch_subscriber,
-                add_publisher
+                add_publisher,
+                remove_publisher,
+                touch_publisher
             ],
         )
 }
