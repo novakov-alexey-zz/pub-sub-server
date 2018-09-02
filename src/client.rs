@@ -19,7 +19,8 @@ impl PubClient {
         }
     }
 
-    pub fn post(&self, url: String, headers: HashMap<String, String>, body: &String) -> Result<&str, CodeReason> {
+    pub fn post(&self, url: String, headers: HashMap<String, String>, body: &String)
+                -> Result<&str, CodeReason> {
         self.call(Method::Post, url, headers, Some(body))
     }
 
@@ -27,12 +28,12 @@ impl PubClient {
         self.call(Method::Delete, url, headers, None)
     }
 
-    fn call(&self, method: Method, url: String, headers: HashMap<String, String>, body:
-    Option<&String>) -> Result<&str, CodeReason> {
+    fn call(&self, method: Method, url: String, headers: HashMap<String, String>,
+            body: Option<&String>) -> Result<&str, CodeReason> {
         let mut req = match method {
             Method::Post => Ok(self.client.post(url)),
             Method::Delete => Ok(self.client.delete(url)),
-            _ => Err((405u16, "unsupported http method")) // unsupported http method
+            _ => Err((405u16, "unsupported http method"))
         }?;
 
         for (k, v) in headers {

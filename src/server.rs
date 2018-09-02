@@ -38,13 +38,19 @@ impl Publisher {
     }
 }
 
-#[derive(Debug)]
-struct Message {
-    publisher: Uuid,
-    topic: Topic,
-    subject: Subject,
-    headers: HashMap<String, String>,
-    body: String,
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub publisher: Uuid,
+    pub topic: Topic,
+    pub subject: Subject,
+    pub headers: HashMap<String, String>,
+    pub body: String,
+}
+
+impl Message {
+    fn set_headers(&mut self, h: HashMap<String, String>) {
+        self.headers = h;
+    }
 }
 
 type Subject = String;
@@ -55,7 +61,7 @@ pub struct PubSubServer {
     pending_subscribers: Arc<Mutex<HashMap<Uuid, Subscriber>>>,
     publishers: Arc<Mutex<HashMap<Uuid, Publisher>>>,
     subscribers: Arc<Mutex<HashMap<Topic, Vec<Subscriber>>>>,
-    received_subs: Arc<Mutex<HashSet<Topic>>>,
+    received_topics: Arc<Mutex<HashSet<Topic>>>,
     //TODO: why received_subs set is needed at all?
     topics: Arc<Mutex<HashMap<Topic, HashMap<Uuid, HashMap<Subject, Message>>>>>,
 }
@@ -67,7 +73,7 @@ impl PubSubServer {
             pending_subscribers: Arc::new(Mutex::new(HashMap::new())),
             publishers: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
-            received_subs: Arc::new(Mutex::new(HashSet::new())),
+            received_topics: Arc::new(Mutex::new(HashSet::new())),
             topics: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -99,7 +105,7 @@ impl PubSubServer {
             .or_insert(vec![])
             .push(s.clone());
 
-        self.received_subs.lock().unwrap()
+        self.received_topics.lock().unwrap()
             .insert(s.topic.clone());
 
         self.publish_all_messages(s)
@@ -120,7 +126,7 @@ impl PubSubServer {
         println!("publish message: {:?} for subscriber: {:?}", &m, &sub);
 
         let url = format!("{}receive/{}/{}/{}", &sub.callback, &sub.topic, &m.publisher, &m.subject);
-        let hrs = Self::rename_headers(&m.headers);
+        let hrs = Self::format_headers(&m.headers);
         let res = self.client.post(url, hrs, &m.body);
 
         match res {
@@ -170,18 +176,17 @@ impl PubSubServer {
         subscribers.iter().for_each(|s| {
             let url = format!("{}remove/{}/{}/{}", s.callback, s.topic, m.publisher, m.subject);
             println!("remove message for subscriber {:?} on {}", m, url);
-            let hrs = Self::rename_headers(&m.headers);
+            let hrs = Self::format_headers(&m.headers);
 
             match self.client.delete(url.clone(), hrs) {
                 Ok(cs) => println!("removed result {}", cs),
-                Err(s) => println!("problem on remove url {} for {:?}", url, s)
+                Err(s) => println!("problem on message remove url {} for {:?}", url, s)
             }
         });
     }
 
-    fn rename_headers(headers: &HashMap<String, String>) -> HashMap<String, String> {
-        headers
-            .iter()
+    fn format_headers(h: &HashMap<String, String>) -> HashMap<String, String> {
+        h.iter()
             .map(|(k, v)| (format!("info-{}", k.to_owned()), v.to_owned()))
             .collect()
     }
@@ -193,7 +198,48 @@ impl PubSubServer {
                 p.touch();
                 Ok(())
             }
-            None => Err(format!("Touching unkown publisher with id: {}", id))
+            None => Err(format!("Touching unknown publisher with id: {}", id))
         }
+    }
+
+    pub fn publish_message(&self, mut m: Message) {
+        let replaced = Self::replace_headers(&m.headers);
+        m.set_headers(replaced);
+        match self.publishers.lock().unwrap().get_mut(&m.publisher) {
+            Some(p) => {
+                p.touch();
+                self.register_message(m.clone());
+                self.register_topic(m.topic.clone());
+                self.fire_receive(m);
+            }
+            None => println!("Ignoring unknown publisher: {:?}", &m)
+        }
+    }
+
+    fn register_topic(&self, t: Topic) {
+        self.received_topics.lock().unwrap().insert(t);
+    }
+
+    fn register_message(&self, m: Message) {
+        self.topics.lock().unwrap()
+            .entry(m.topic.clone())
+            .or_insert(HashMap::new())
+            .entry(m.publisher.clone())
+            .or_insert(HashMap::new())
+            .insert(m.subject.clone(), m);
+    }
+
+    fn replace_headers(h: &HashMap<String, String>) -> HashMap<String, String> {
+        h.iter()
+            .map(|(k, v)| (k.to_owned().replace("info-{}", ""), v.to_owned()))
+            .collect()
+    }
+
+    fn fire_receive(&self, m: Message) {
+        self.subscribers.lock().unwrap()
+            .entry(m.topic.clone())
+            .or_insert(vec![])
+            .iter()
+            .for_each(|s| self.publish(&m, s))
     }
 }

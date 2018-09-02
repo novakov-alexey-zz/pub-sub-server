@@ -1,8 +1,8 @@
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
+extern crate chrono;
 extern crate rocket;
 extern crate uuid;
-extern crate chrono;
 
 use rocket::Rocket;
 use self::rest::*;
@@ -24,7 +24,8 @@ pub fn mount_routes(server: PubSubServer) -> Rocket {
                 touch_subscriber,
                 add_publisher,
                 remove_publisher,
-                touch_publisher
+                touch_publisher,
+                publish
             ],
         )
 }
