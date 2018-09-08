@@ -242,4 +242,28 @@ impl PubSubServer {
             .iter()
             .for_each(|s| self.publish(&m, s))
     }
+
+    pub fn remove(&self, m: Message) {
+        self.publishers.lock().unwrap()
+            .get_mut(&m.publisher)
+            .iter_mut()
+            .for_each(|ref mut p| {
+                p.touch();
+                println!("publisher remove {:?}", &m);
+                self.remove_messages(&m);
+                self.subscribers.lock().unwrap()
+                    .get(m.topic.as_str())
+                    .iter()
+                    .for_each(|subs| self.remove_message(&m, subs));
+            })
+    }
+
+    fn remove_messages(&self, m: &Message) {
+        self.topics.lock().unwrap()
+            .entry(m.topic.clone())
+            .or_insert(HashMap::new())
+            .entry(m.publisher)
+            .or_insert(HashMap::new())
+            .remove(&m.subject);
+    }
 }

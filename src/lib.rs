@@ -25,7 +25,8 @@ pub fn mount_routes(server: PubSubServer) -> Rocket {
                 add_publisher,
                 remove_publisher,
                 touch_publisher,
-                publish
+                publish,
+                remove
             ],
         )
 }

@@ -1,8 +1,10 @@
 extern crate rocket;
 extern crate rocket_contrib;
 
+use rocket::http::Status;
 use rocket::Outcome;
 use rocket::request::{self, FromRequest, Request};
+use rocket::response::status;
 use rocket::response::status::NotFound;
 use self::rocket::State;
 use self::rocket_contrib::UUID;
@@ -10,7 +12,10 @@ use server::Message;
 use std::collections::HashMap;
 use super::server::PubSubServer;
 use uuid::ParseError;
-use uuid::Uuid;
+
+type Code = status::Custom<()>;
+
+const OK: Code = status::Custom(Status::Ok, ());
 
 struct Headers { v: HashMap<String, String> }
 
@@ -55,9 +60,9 @@ fn unsubscribe(server: State<PubSubServer>, id: UUID) -> Result<String, ParseErr
 }
 
 #[head("/subscribe/<id>")]
-fn touch_subscriber(server: State<PubSubServer>, id: UUID) -> Result<(), ParseError> {
+fn touch_subscriber(server: State<PubSubServer>, id: UUID) -> Code {
     server.touch_subscriber(*id);
-    Ok(())
+    OK
 }
 
 #[get("/publish/<id>")]
@@ -70,10 +75,10 @@ fn add_publisher(server: State<PubSubServer>, id: UUID) -> Result<String, ParseE
 }
 
 #[delete("/publish/<id>")]
-fn remove_publisher(server: State<PubSubServer>, id: UUID) -> Result<(), ParseError> {
+fn remove_publisher(server: State<PubSubServer>, id: UUID) -> Code {
     let uuid = *id;
     server.remove_publisher(uuid);
-    Ok(())
+    OK
 }
 
 #[head("/publish/<id>")]
@@ -83,13 +88,22 @@ fn touch_publisher(server: State<PubSubServer>, id: UUID) -> Result<(), String> 
 }
 
 #[put("/publish/<topic>/<publisher>/<subject>", data = "<body>")]
-fn publish(server: State<PubSubServer>, topic: String, publisher: String, subject: String,
+fn publish(server: State<PubSubServer>, topic: String, publisher: UUID, subject: String,
            headers: Headers, body: String) //TODO:  set max body size
-           -> Result<(), ParseError> {
-    let uuid = Uuid::parse_str(publisher.as_str())?;
-    server.publish_message(Message { publisher: uuid, topic, subject, headers: headers.v, body });
-    Ok(())
+           -> Code {
+    server.publish_message(Message { publisher: *publisher, topic, subject, headers: headers.v, body });
+    OK
 }
 
-//DELETE /info/publish/:topic/:publisher/:subject           modules.PlayInfoServerController.remove(publisher:java.util.UUID, topic:String, subject:String)
-
+#[delete("/publish/<topic>/<publisher>/<subject>")]
+fn remove(server: State<PubSubServer>, publisher: UUID, topic: String, subject: String, headers: Headers) -> Code {
+    server.remove(Message {
+        publisher: *publisher,
+        topic,
+        subject,
+        headers: headers.v,
+        body: ""
+            .to_string(),
+    });
+    OK
+}
