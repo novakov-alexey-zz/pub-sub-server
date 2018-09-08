@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 use super::client::PubClient;
+use super::headers::unformat_headers;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -126,8 +127,7 @@ impl PubSubServer {
         println!("publish message: {:?} for subscriber: {:?}", &m, &sub);
 
         let url = format!("{}receive/{}/{}/{}", &sub.callback, &sub.topic, &m.publisher, &m.subject);
-        let hrs = Self::format_headers(&m.headers);
-        let res = self.client.post(url, hrs, &m.body);
+        let res = self.client.post(url, &m.headers, &m.body);
 
         match res {
             Ok(_) =>
@@ -176,19 +176,12 @@ impl PubSubServer {
         subscribers.iter().for_each(|s| {
             let url = format!("{}remove/{}/{}/{}", s.callback, s.topic, m.publisher, m.subject);
             println!("remove message for subscriber {:?} on {}", m, url);
-            let hrs = Self::format_headers(&m.headers);
 
-            match self.client.delete(url.clone(), hrs) {
+            match self.client.delete(url.clone(), &m.headers) {
                 Ok(cs) => println!("removed result {}", cs),
                 Err(s) => println!("problem on message remove url {} for {:?}", url, s)
             }
         });
-    }
-
-    fn format_headers(h: &HashMap<String, String>) -> HashMap<String, String> {
-        h.iter()
-            .map(|(k, v)| (format!("info-{}", k.to_owned()), v.to_owned()))
-            .collect()
     }
 
     pub fn touch_publisher(&self, id: Uuid) -> Result<(), String> {
@@ -203,8 +196,8 @@ impl PubSubServer {
     }
 
     pub fn publish_message(&self, mut m: Message) {
-        let replaced = Self::replace_headers(&m.headers);
-        m.set_headers(replaced);
+        let unformated = unformat_headers(&m.headers);
+        m.set_headers(unformated);
         match self.publishers.lock().unwrap().get_mut(&m.publisher) {
             Some(p) => {
                 p.touch();
@@ -227,12 +220,6 @@ impl PubSubServer {
             .entry(m.publisher.clone())
             .or_insert(HashMap::new())
             .insert(m.subject.clone(), m);
-    }
-
-    fn replace_headers(h: &HashMap<String, String>) -> HashMap<String, String> {
-        h.iter()
-            .map(|(k, v)| (k.to_owned().replace("info-{}", ""), v.to_owned()))
-            .collect()
     }
 
     fn fire_receive(&self, m: Message) {
