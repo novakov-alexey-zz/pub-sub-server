@@ -141,6 +141,38 @@ fn touch_remove_touch_publisher() {
     assert!(body.contains("Touching unknown publisher "));
 }
 
+#[test]
+fn publish() {
+    //given
+    let client = new_client();
+    let id = "355f2e4f-554b-47d7-aca8-122a6cec9f26";
+
+    //when
+    let res = client
+        .put(format!("info/publish/{}/{}/{}", "mytopic", id, "mysubject"))
+        .body("test body")
+        .dispatch();
+    let code = res.status();
+    //then
+    assert_eq!(200, code.code);
+}
+
+#[test]
+fn remove() {
+    //given
+    let client = new_client();
+    let id = "355f2e4f-554b-47d7-aca8-122a6cec9f26";
+
+    //when
+    let res = client
+        .delete(format!("info/publish/{}/{}/{}", "mytopic", id, "mysubject"))
+        .dispatch();
+    let code = res.status();
+
+    //then
+    assert_eq!(200, code.code);
+}
+
 fn new_client() -> Client {
     let rocket = mount_routes(PubSubServer::new());
     Client::new(rocket).expect("valid rocket instance")
