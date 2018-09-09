@@ -141,7 +141,10 @@ impl PubSubServer {
 
     pub fn add_publisher(&self, id: Uuid) {
         self.publishers.lock().unwrap().insert(id, Publisher::new(id));
-        println!("added publisher {:?}", self.publishers.lock().unwrap().get(&id));
+        match self.publishers.lock().unwrap().get(&id) {
+            Some(p) => println!("added publisher {:?}", p),
+            None => println!("WARNING: publisher with id = {:?} is not stored", id)
+        }
     }
 
     pub fn remove_publisher(&self, id: Uuid) {
@@ -191,7 +194,10 @@ impl PubSubServer {
                 p.touch();
                 Ok(())
             }
-            None => Err(format!("Touching unknown publisher with id: {}", id))
+            None => {
+                println!("touching unknown publisher {:?}", id);
+                Err(format!("Touching unknown publisher with id: {}", id))
+            }
         }
     }
 

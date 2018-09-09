@@ -84,6 +84,63 @@ fn touch_subscriber() {
     assert_eq!(touched.status(), Status::Ok);
 }
 
+#[test]
+fn add_publisher() {
+    //given
+    let client = new_client();
+    let id = "355f2e4f-554b-47d7-aca8-122a6cec9f26";
+    //when
+    let mut res = client
+        .get(format!("info/publish/{}", id))
+        .dispatch();
+    let res_id = res.body_string().unwrap();
+    //then
+    assert_eq!(id, res_id);
+}
+
+#[test]
+fn touch_remove_touch_publisher() {
+    //given
+    let client = new_client();
+    let id = "355f2e4f-554b-47d7-aca8-122a6cec9f26";
+
+    //when
+    client
+        .get(format!("info/publish/{}", id))
+        .dispatch();
+    let mut res = client
+        .head(format!("info/publish/{}", id))
+        .dispatch();
+    let body = res.body_string();
+
+    //then
+    assert!(body.is_none());
+
+    //when
+    let mut res = client
+        .delete(format!("info/publish/{}", id))
+        .dispatch();
+    let body = res.body_string();
+
+    //then
+    assert!(body.is_none());
+
+    //when
+    let mut res = client
+        .head(format!("info/publish/{}", id))
+        .dispatch();
+    let code = res.status();
+
+    //then
+    assert_eq!(404, code.code);
+
+    let body = res.body_string();
+    assert!(body.is_some());
+
+    let body = body.unwrap();
+    assert!(body.contains("Touching unknown publisher "));
+}
+
 fn new_client() -> Client {
     let rocket = mount_routes(PubSubServer::new());
     Client::new(rocket).expect("valid rocket instance")

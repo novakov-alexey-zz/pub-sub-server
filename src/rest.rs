@@ -82,9 +82,9 @@ fn remove_publisher(server: State<PubSubServer>, id: UUID) -> Code {
 }
 
 #[head("/publish/<id>")]
-fn touch_publisher(server: State<PubSubServer>, id: UUID) -> Result<(), String> {
+fn touch_publisher(server: State<PubSubServer>, id: UUID) -> Result<(), NotFound<String>> {
     let uuid = *id;
-    server.touch_publisher(uuid)
+    server.touch_publisher(uuid).map_err(|e| NotFound(e))
 }
 
 #[put("/publish/<topic>/<publisher>/<subject>", data = "<body>")]
