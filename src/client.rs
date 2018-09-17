@@ -4,29 +4,44 @@ use rocket::http::Header;
 use rocket::http::Method;
 use rocket::http::Status;
 use rocket::local::Client;
+use server::Message;
 use std::collections::HashMap;
 use super::headers::format_headers;
+use downcast_rs::Downcast;
 
-pub struct PubClient {
+pub trait Subscribers: Downcast {
+    fn publish_message(&self, callback: &String, msg: &Message) -> Result<&str, CodeReason>;
+    //TODO: return type must be Future of Result
+
+    fn remove_message(&self, callback: &String, msg: &Message) -> Result<&str, CodeReason>;
+    //TODO: return type must be Future of Result
+}
+
+impl_downcast!(Subscribers);
+
+pub struct SubscriberService {
     client: Client,
 }
 
-type CodeReason<'a> = (u16, &'a str);
+pub type CodeReason<'a> = (u16, &'a str);
 
-impl PubClient {
+impl Subscribers for SubscriberService {
+    fn publish_message(&self, callback: &String, msg: &Message) -> Result<&str, CodeReason> {
+        let url = format!("{}receive/{}/{}/{}", callback, msg.topic, msg.publisher, msg.subject);
+        self.call(Method::Post, url, &msg.headers, Some(&msg.body))
+    }
+
+    fn remove_message(&self, callback: &String, msg: &Message) -> Result<&str, CodeReason> {
+        let url = format!("{}remove/{}/{}/{}", callback, msg.topic, msg.publisher, msg.subject);
+        self.call(Method::Delete, url, &msg.headers, None)
+    }
+}
+
+impl SubscriberService {
     pub fn new() -> Self {
-        PubClient {
+        SubscriberService {
             client: Client::new(rocket::ignite()).expect("valid rocket")
         }
-    }
-
-    pub fn post(&self, url: String, headers: &HashMap<String, String>, body: &String)
-                -> Result<&str, CodeReason> {
-        self.call(Method::Post, url, headers, Some(body))
-    }
-
-    pub fn delete(&self, url: String, headers: &HashMap<String, String>) -> Result<&str, CodeReason> {
-        self.call(Method::Delete, url, headers, None)
     }
 
     fn call(&self, method: Method, url: String, headers: &HashMap<String, String>,
@@ -34,7 +49,7 @@ impl PubClient {
         let mut req = match method {
             Method::Post => Ok(self.client.post(url)),
             Method::Delete => Ok(self.client.delete(url)),
-            _ => Err((405u16, "unsupported http method"))
+            _ => Err((405u16, ("unsupported HTTP method")))
         }?;
 
         let hrs = format_headers(&headers);

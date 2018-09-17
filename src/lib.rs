@@ -3,6 +3,8 @@
 extern crate chrono;
 extern crate rocket;
 extern crate uuid;
+#[macro_use]
+extern crate downcast_rs;
 
 use rocket::Rocket;
 use self::rest::*;

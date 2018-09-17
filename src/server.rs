@@ -1,11 +1,14 @@
 use chrono::prelude::*;
+use client::Subscribers;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::Mutex;
-use super::client::PubClient;
+use super::client::SubscriberService;
 use super::headers::unformat_headers;
 use uuid::Uuid;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 struct Subscriber {
@@ -17,6 +20,12 @@ struct Subscriber {
 impl Subscriber {
     pub fn new(callback: String, topic: String) -> Self {
         Subscriber { id: Uuid::new_v4(), callback, topic }
+    }
+}
+
+impl Display for Subscriber {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "({}, {}, {})", self.id.hyphenated(), self.callback, self.topic)
     }
 }
 
@@ -39,6 +48,12 @@ impl Publisher {
     }
 }
 
+impl Display for Publisher {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "({}, {})", self.id.hyphenated(), self.last_seen)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Message {
     pub publisher: Uuid,
@@ -49,8 +64,15 @@ pub struct Message {
 }
 
 impl Message {
-    fn set_headers(&mut self, h: HashMap<String, String>) {
-        self.headers = h;
+    fn with_headers(self, h: HashMap<String, String>) -> Message {
+        Message { headers: h, ..self }
+    }
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "({}, {}, {}, {:?}, \n body: {})", self.publisher.hyphenated(), self.topic, self
+            .subject, self.headers, self.body)
     }
 }
 
@@ -58,23 +80,30 @@ type Subject = String;
 type Topic = String;
 
 pub struct PubSubServer {
-    client: PubClient,
+    pub subs_service: Box<Subscribers + 'static>,
     pending_subscribers: Arc<Mutex<HashMap<Uuid, Subscriber>>>,
     publishers: Arc<Mutex<HashMap<Uuid, Publisher>>>,
     subscribers: Arc<Mutex<HashMap<Topic, Vec<Subscriber>>>>,
-    received_topics: Arc<Mutex<HashSet<Topic>>>,
-    //TODO: why received_subs set is needed at all?
+    // topics - main data container. A Subject can have only one message, i.e. Subject is a
+    // unique of a Message
     topics: Arc<Mutex<HashMap<Topic, HashMap<Uuid, HashMap<Subject, Message>>>>>,
 }
 
-impl PubSubServer {
+unsafe impl<'a> Send for PubSubServer {}
+
+unsafe impl<'a> Sync for PubSubServer {}
+
+impl<'a> PubSubServer {
     pub fn new() -> Self {
+        PubSubServer::with_service(Box::new(SubscriberService::new()))
+    }
+
+    pub fn with_service(client: Box<Subscribers + 'a>) -> PubSubServer {
         PubSubServer {
-            client: PubClient::new(),
+            subs_service: client,
             pending_subscribers: Arc::new(Mutex::new(HashMap::new())),
             publishers: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
-            received_topics: Arc::new(Mutex::new(HashSet::new())),
             topics: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -82,7 +111,7 @@ impl PubSubServer {
     pub fn add_pending_subscriber(&self, callback: String, topic: Topic) -> Uuid {
         let sub = Subscriber::new(callback, topic);
         let id = sub.id.clone();
-        println!("adding {:?} to pending", sub);
+        println!("adding {} to pending", sub);
         self.pending_subscribers.lock().unwrap().insert(sub.id, sub);
         id
     }
@@ -94,6 +123,9 @@ impl PubSubServer {
     }
 
     pub fn touch_subscriber(&self, id: Uuid) {
+        self.pending_subscribers.lock().unwrap().get(&id).iter()
+            .for_each(|s| println!("Found subscriber {}", s));
+
         self.pending_subscribers.lock().unwrap()
             .remove(&id)
             .into_iter()
@@ -106,13 +138,11 @@ impl PubSubServer {
             .or_insert(vec![])
             .push(s.clone());
 
-        self.received_topics.lock().unwrap()
-            .insert(s.topic.clone());
-
         self.publish_all_messages(s)
     }
 
     fn publish_all_messages(&self, s: Subscriber) {
+        println!("publishing all message for subscriber {}", s);
         self.topics.lock().unwrap()
             .entry(s.topic.clone())
             .or_insert(HashMap::new())
@@ -124,17 +154,24 @@ impl PubSubServer {
     }
 
     fn publish(&self, m: &Message, sub: &Subscriber) {
-        println!("publish message: {:?} for subscriber: {:?}", &m, &sub);
+        println!("publish message: {} for subscriber: {}", &m, &sub);
+        let msg = Message {
+            publisher: m.publisher.clone(),
+            topic: sub.topic.clone(),
+            subject: m.subject.clone(),
+            headers: m.headers.clone(),
+            body: m.body.clone(),
+        };
 
-        let url = format!("{}receive/{}/{}/{}", &sub.callback, &sub.topic, &m.publisher, &m.subject);
-        let res = self.client.post(url, &m.headers, &m.body);
+        let c = self.subs_service.as_ref();
+        let res = c.publish_message(&sub.callback, &msg);
 
         match res {
             Ok(_) =>
-                println!("message publishing for {:?} returned Ok", &sub),
+                println!("message publishing for {} returned Ok", &sub),
             Err(s) => {
                 self.remove_subscriber(sub.id);
-                println!("message publishing failed for {:?} with status: {:?}", &sub, s);
+                println!("message publishing failed for {} with status: {:?}", &sub, s);
             }
         }
     }
@@ -142,8 +179,8 @@ impl PubSubServer {
     pub fn add_publisher(&self, id: Uuid) {
         self.publishers.lock().unwrap().insert(id, Publisher::new(id));
         match self.publishers.lock().unwrap().get(&id) {
-            Some(p) => println!("added publisher {:?}", p),
-            None => println!("WARNING: publisher with id = {:?} is not stored", id)
+            Some(p) => println!("added publisher {}", p),
+            None => println!("WARNING: publisher with id = {} is not found", id)
         }
     }
 
@@ -152,7 +189,7 @@ impl PubSubServer {
             .remove(&id) {
             Some(p) => {
                 self.remove_publisher_topics(&id);
-                println!("removed publisher {:?}", p)
+                println!("removed publisher {}", p)
             }
             None => println!("publisher not found. Doing nothing")
         }
@@ -177,12 +214,21 @@ impl PubSubServer {
 
     fn remove_message(&self, m: &Message, subscribers: &Vec<Subscriber>) {
         subscribers.iter().for_each(|s| {
-            let url = format!("{}remove/{}/{}/{}", s.callback, s.topic, m.publisher, m.subject);
-            println!("remove message for subscriber {:?} on {}", m, url);
+            println!("remove message for subscriber = {} on callback = {} and topic = {}", s,
+                     &s.callback, &s.topic);
+            let c = self.subs_service.as_ref();
+            let msg = Message {
+                publisher: m.publisher,
+                topic: s.topic.clone(),
+                subject: m.subject.clone(),
+                headers: m.headers.clone(),
+                body: "".to_string(),
+            };
 
-            match self.client.delete(url.clone(), &m.headers) {
+            match c.remove_message(&s.callback, &msg) {
                 Ok(cs) => println!("removed result {}", cs),
-                Err(s) => println!("problem on message remove url {} for {:?}", url, s)
+                Err(e) => println!("problem on message remove callback = '{}' and topic = '{}' for \
+                subscriber: '{:?}', error: {:?}", &s.callback, &s.topic, s, e)
             }
         });
     }
@@ -190,33 +236,30 @@ impl PubSubServer {
     pub fn touch_publisher(&self, id: Uuid) -> Result<(), String> {
         match self.publishers.lock().unwrap().get_mut(&id) {
             Some(p) => {
-                println!("touching publisher {:?}", &p);
+                println!("touching publisher {}", &p);
                 p.touch();
                 Ok(())
             }
             None => {
-                println!("touching unknown publisher {:?}", id);
+                println!("touching unknown publisher {}", id);
                 Err(format!("Touching unknown publisher with id: {}", id))
             }
         }
     }
 
-    pub fn publish_message(&self, mut m: Message) {
-        let unformated = unformat_headers(&m.headers);
-        m.set_headers(unformated);
-        match self.publishers.lock().unwrap().get_mut(&m.publisher) {
+    pub fn publish_message(&self, m: Message) {
+        let publisher = &m.publisher.clone();
+        let headers = &m.headers.clone();
+        let msg = m.with_headers(unformat_headers(headers));
+
+        match self.publishers.lock().unwrap().get_mut(publisher) {
             Some(p) => {
                 p.touch();
-                self.register_message(m.clone());
-                self.register_topic(m.topic.clone());
-                self.fire_receive(m);
+                self.register_message(msg.clone());
+                self.fire_receive(msg);
             }
-            None => println!("Ignoring unknown publisher: {:?}", &m)
+            None => println!("Ignoring unknown publisher at message: {}", &msg)
         }
-    }
-
-    fn register_topic(&self, t: Topic) {
-        self.received_topics.lock().unwrap().insert(t);
     }
 
     fn register_message(&self, m: Message) {
