@@ -2,15 +2,15 @@ extern crate pub_sub_server;
 extern crate rocket;
 extern crate uuid;
 
-use pub_sub_server::client::CodeReason;
-use pub_sub_server::client::Subscribers;
+use pub_sub_server::subscribers::CodeReason;
+use pub_sub_server::subscribers::Subscribers;
 use pub_sub_server::mount_routes;
-use pub_sub_server::server::Message;
 use pub_sub_server::server::PubSubServer;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::local::Client;
 use std::sync::RwLock;
+use pub_sub_server::models::Message;
 
 const TOPIC_NAME: &str = "mytopic";
 const SUBJECT_NAME: &str = "mysubject";

@@ -1,6 +1,7 @@
 extern crate rocket;
 extern crate rocket_contrib;
 
+use models::Message;
 use rocket::http::Status;
 use rocket::Outcome;
 use rocket::request::{self, FromRequest, Request};
@@ -8,14 +9,20 @@ use rocket::response::status;
 use rocket::response::status::NotFound;
 use self::rocket::State;
 use self::rocket_contrib::UUID;
-use server::Message;
 use std::collections::HashMap;
+use super::headers::CALLBACK_HEADER;
 use super::server::PubSubServer;
 use uuid::ParseError;
 
 type Code = status::Custom<()>;
 
 const OK: Code = status::Custom(Status::Ok, ());
+
+lazy_static! {
+    static ref NO_HEADET_ERR: String = {
+        format!("HTTP request must have {} header containing Uuid of a subscriber", CALLBACK_HEADER)
+    };
+}
 
 struct Headers { v: HashMap<String, String> }
 
@@ -40,10 +47,8 @@ fn index() -> &'static str {
 #[get("/subscribe/<topic>")]
 fn subscribe<'r>(server: State<PubSubServer>, topic: String, headers: Headers)
                  -> Result<String, NotFound<&'static str>> {
-    let l = headers.v.get("Location")
-        .ok_or(
-            NotFound("HTTP request must have 'Location' header containing Uuid of a subscriber")
-        )?;
+    let l = headers.v.get(CALLBACK_HEADER)
+        .ok_or(NotFound(NO_HEADET_ERR.as_ref()))?;
 
     println!("subscribing on topic {} location: {}", topic, l);
     let id = server.add_pending_subscriber(l.to_string(), topic);

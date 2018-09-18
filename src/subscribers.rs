@@ -4,10 +4,10 @@ use rocket::http::Header;
 use rocket::http::Method;
 use rocket::http::Status;
 use rocket::local::Client;
-use server::Message;
 use std::collections::HashMap;
 use super::headers::format_headers;
 use downcast_rs::Downcast;
+use models::Message;
 
 pub trait Subscribers: Downcast {
     fn publish_message(&self, callback: &String, msg: &Message) -> Result<&str, CodeReason>;

@@ -18,3 +18,5 @@ uuid = {version = "0.6", features = ["serde", "v4"]}
 chrono = "0.4"
 
 downcast-rs = "1.0.3"
+
+lazy_static = "1.1.0"
